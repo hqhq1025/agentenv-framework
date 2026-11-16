@@ -1,7 +1,11 @@
 """The OSWorld controller beside a computer, as the ``osworld_*`` steps call it over HTTP: ``/reset``,
 ``/initialize_task``, ``/setup``, and ``/evaluate``, the last started with ``/evaluate_async`` and polled with short
 requests, since a judge can run for minutes and a long silent connection is reaped by what's between. Every call
-carries the bearer token ``osworld_deploy_controller`` started the controller with (``Endpoint``)."""
+carries the bearer token ``osworld_deploy_controller`` started the controller with (``Endpoint``).
+
+A controller image's contract is the env it's started with (``CONTROLLER_ENV_KEYS``) and these routes. The ``osworld``
+bundle's ``osworld-controller``, the default, serves ``/setup`` and ``/evaluate`` with upstream OSWorld's checks, and
+answers 501 to an LLM-judge func and to an OSWorld-V2 task, which need an image that serves them."""
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +20,16 @@ from agent_env.config import get_config
 
 logger = logging.getLogger(__name__)
 
+#: The env a controller is started with, its contract: the provider (``remote``: it drives a guest server it reaches
+#: over HTTP), the guest's OS type, the guest server's base URL, path prefix and all, the JSON headers every call to it
+#: carries, and the bearer token every call to the controller must carry. The judge's model endpoint (``LITELLM_*``)
+#: goes beside them, for an image that serves judges.
+PROVIDER_ENV, REMOTE_PROVIDER = "PROVIDER", "remote"
+OS_TYPE_ENV, OS_TYPE = "OS_TYPE", "Ubuntu"
+GUEST_URL_ENV = "REMOTE_VM_IP"
+GUEST_HEADERS_ENV = "REMOTE_SERVER_HEADERS"
+TOKEN_ENV = "CONTROLLER_AUTH_TOKEN"
+CONTROLLER_ENV_KEYS = (PROVIDER_ENV, OS_TYPE_ENV, GUEST_URL_ENV, GUEST_HEADERS_ENV, TOKEN_ENV)
 #: How long one controller call may take: OSWorld-V2 ``setup()`` downloading assets, or a judge.
 DEFAULT_TIMEOUT_S = 1800
 #: The controller has no health route; ``GET /configure`` is a read that answers once its app is up.

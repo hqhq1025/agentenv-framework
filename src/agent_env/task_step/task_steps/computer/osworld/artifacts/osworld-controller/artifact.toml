@@ -1,0 +1,2 @@
+type = "docker_image"
+description = "The public OSWorld controller: upstream OSWorld's setup, getters and metrics, run against an osworld-server computer app's guest server, behind a bearer token"

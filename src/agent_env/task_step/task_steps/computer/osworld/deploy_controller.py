@@ -6,9 +6,12 @@ computer's card advertises (:mod:`.guest`), with the env's control token on ever
 from the computer, so it requires a bearer token derived from that control token (``CONTROLLER_AUTH_TOKEN``) and the
 step refuses a controller that answers without it. The judge's key and endpoint are the run's
 (``user_overrides.judge_litellm_api_key`` / ``litellm_api_key``, ``judge_litellm_base_url`` / ``litellm_base_url``),
-else the configured ``[model]``'s, as ``rubrics_verifier``'s are. Once it answers, the step records the controller's and
-the guest server's addresses on the env for ``osworld_initialize`` and ``osworld_evaluate``, and the sandbox in
-``context.deployed_sandboxes`` for teardown."""
+else the configured ``[model]``'s, as ``rubrics_verifier``'s are. The image is the step's
+``controller_image_artifact_id``, by default the ``osworld`` bundle's ``osworld-controller``
+(``DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID``), which a bundle run writes into a step that names none, pulling it in; an
+image's contract is the env this step sets (``controller.CONTROLLER_ENV_KEYS``) and the routes the steps call
+(:mod:`.controller`). Once it answers, the step records the controller's and the guest server's addresses on the env
+for ``osworld_initialize`` and ``osworld_evaluate``, and the sandbox in ``context.deployed_sandboxes`` for teardown."""
 from __future__ import annotations
 
 import json
@@ -29,13 +32,13 @@ from agent_env.task_step.task_step import TaskStep, TaskStepDependency
 
 logger = logging.getLogger(__name__)
 
-#: The controller image's artifact id when a step names none.
-DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID = "cua-controller"
+#: The controller image's artifact id when a step names none: the ``osworld`` bundle's, built from upstream OSWorld.
+DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID = "@local/agentenv-framework/osworld/osworld-controller"
 CONTROLLER_PORT = 8000
 #: The disk the controller's sandbox gets: its image, the grader's scratch and the files it fetches to grade.
 CONTROLLER_DISK_GB = 10
 #: The env var the controller reads the bearer token every call to it must carry from.
-CONTROLLER_TOKEN_ENV = "CONTROLLER_AUTH_TOKEN"
+CONTROLLER_TOKEN_ENV = controller.TOKEN_ENV
 #: A controller's sandbox name, by its computer env's id.
 SANDBOX_NAME_PREFIX = "osworld-controller-"
 
@@ -43,7 +46,8 @@ SANDBOX_NAME_PREFIX = "osworld-controller-"
 class OSWorldDeployControllerTaskStep(TaskStep):
     type: ClassVar[str] = "osworld_deploy_controller"
     entity_refs = (EntityRef.env("env_id"),
-                   EntityRef.artifact("controller_image_artifact_id", artifact_type="docker_image"))
+                   EntityRef.artifact("controller_image_artifact_id", artifact_type="docker_image",
+                                      default=DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID))
 
     def __init__(self, id: str, version: Optional[int], env_id: str, controller_image_artifact_id: Optional[str] = None,
                  ttl_seconds: int = TaskStep.DEFAULT_TTL_SECONDS, cpu: float = 2.0, memory_mb: int = 4096,
@@ -75,8 +79,9 @@ class OSWorldDeployControllerTaskStep(TaskStep):
         """Remote mode against the guest server, with the env's control token on every call, the token every call to
         the controller must carry, and the judge's model endpoint: the run's ``overrides``', else ``[model]``'s."""
         overrides = overrides or {}
-        env = {**(self.env_vars or {}), "PROVIDER": "remote", "OS_TYPE": "Ubuntu", "REMOTE_VM_IP": guest_url,
-               "REMOTE_SERVER_HEADERS": json.dumps(deployed.control_headers),
+        env = {**(self.env_vars or {}), controller.PROVIDER_ENV: controller.REMOTE_PROVIDER,
+               controller.OS_TYPE_ENV: controller.OS_TYPE, controller.GUEST_URL_ENV: guest_url,
+               controller.GUEST_HEADERS_ENV: json.dumps(deployed.control_headers),
                CONTROLLER_TOKEN_ENV: guest.controller_token(deployed)}
         config = get_config()
         key_ref = overrides.get("judge_litellm_api_key") or overrides.get("litellm_api_key")

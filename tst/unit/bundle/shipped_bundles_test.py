@@ -14,7 +14,8 @@ from agent_env.bundle.installed import CORE, installed_bundles
 from agent_env.bundle.plan import check_bundle, plan_bundle
 from agent_env.bundle.resolve import resolve_bundle
 from agent_env.config import get_config
-from agent_env.plugins._bundles import ENV_ALIASES, installed_aliases
+from agent_env.plugins._bundles import ARTIFACT_ALIASES, ENV_ALIASES, installed_aliases
+from agent_env.task_step.task_steps.computer.osworld.deploy_controller import DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID
 from tst.unit.bundle._support import layout
 
 
@@ -27,7 +28,7 @@ SHIPPED = sorted(_shipped())
 
 def test_agentenv_framework_ships_its_bundles():
     assert SHIPPED == ["advance-to-next-event", "agents", "browsers", "computers", "desktop", "drivers", "echo-mcp", "hello",
-                       "mail-mcp", "next-env-event"]
+                       "mail-mcp", "next-env-event", "osworld"]
 
 
 @pytest.mark.parametrize("name", SHIPPED)
@@ -54,7 +55,7 @@ def test_the_shipped_aliases_are_agent_envs_alone_and_claude_code_names_the_defa
 
 
 
-def test_the_shipped_env_aliases_name_the_mail_env_the_validator_deploys_the_drivers_and_the_browsers():
+def test_the_shipped_env_aliases_name_the_mail_env_the_validator_deploys_the_drivers_the_browsers_and_osworld():
     table = installed_aliases(tuple(_shipped().values()), ENV_ALIASES)
 
     assert table.refused == {} and table.refused_claims == {}
@@ -65,8 +66,16 @@ def test_the_shipped_env_aliases_name_the_mail_env_the_validator_deploys_the_dri
         "macos-harness": "@local/agentenv-framework/drivers/macos-harness",
         "codex-computer-use": "@local/agentenv-framework/drivers/codex-computer-use",
         "aside": "@local/agentenv-framework/drivers/aside",
-        "chromium": "@local/agentenv-framework/browsers/chromium"}
+        "chromium": "@local/agentenv-framework/browsers/chromium",
+        "osworld-server": "@local/agentenv-framework/osworld/osworld-server"}
     assert A2AAgent.VALIDATION_ENV_ID == "mail"
+
+
+def test_the_shipped_artifact_aliases_name_the_osworld_controller():
+    table = installed_aliases(tuple(_shipped().values()), ARTIFACT_ALIASES)
+
+    assert table.refused == {} and table.refused_claims == {}
+    assert table.target("osworld-controller").target_id == DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID
 
 def test_a_task_naming_no_agent_plans_with_the_shipped_default(tmp_path, monkeypatch, local_stores, cli_routing):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -77,3 +86,19 @@ def test_a_task_naming_no_agent_plans_with_the_shipped_default(tmp_path, monkeyp
 
     assert (BundleKind.AGENT, default) in [(write.kind, write.id) for write in plan.writes]
     assert plan.origins and {bundle.id_root for bundle in plan.origins.values()} == {_shipped()["agents"].id_root}
+
+
+def test_an_osworld_controller_step_naming_no_image_plans_with_the_shipped_controller(tmp_path, monkeypatch,
+                                                                                      local_stores, cli_routing):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    layout(tmp_path / "desk", {"envs/e/Dockerfile": "FROM scratch\n", "envs/e/env.toml": 'environment_name = "e"\n',
+                               "tasks/t.json": json.dumps([
+        {"id": "env", "type": "deploy_env", "env_id": "e"},
+        {"id": "controller", "type": "osworld_deploy_controller", "env_id": "e", "depends_on": ["env"]}])})
+
+    plan = plan_bundle(resolve_bundle(parse_bundle(tmp_path / "desk")), installed=installed_bundles)
+
+    assert (BundleKind.ARTIFACT, DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID) in [(w.kind, w.id) for w in plan.writes]
+    (task,) = plan.tasks
+    (controller,) = [step for step in task.config if step["type"] == "osworld_deploy_controller"]
+    assert controller["controller_image_artifact_id"] == DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID

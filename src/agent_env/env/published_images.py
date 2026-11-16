@@ -1,5 +1,5 @@
 """The images agent-env publishes for the infra envs, the agents it ships, an example's env, its base computers and their
-disk forms, for linux/amd64 and linux/arm64: one per Dockerfile, built from the Dockerfile's folder. Each is tagged by
+disk forms, the OSWorld controller, for linux/amd64 and linux/arm64: one per Dockerfile, built from the Dockerfile's folder. Each is tagged by
 its build context's content, and an image built over other published images by theirs too, so an install holding the
 same sources finds the image built from them; a release wheel also records the digest its release published under each
 tag. A release also publishes the computer apps it ships composed, each in a package named for it, chromium's in
@@ -35,6 +35,7 @@ _SERVED: dict[str, str] = {}  # the digest the registry served each ref under, w
 _AGENTS = Path(__file__).parents[1] / "agents" / "agents"
 _EXAMPLES = Path(__file__).parents[1] / "examples"
 _COMPUTERS = Path(__file__).parents[1] / "computers" / "artifacts"
+_OSWORLD = Path(__file__).parents[1] / "task_step" / "task_steps" / "computer" / "osworld"
 # The Linux disk form's boot recipe, disk tools and QEMU launcher.
 DISK = Path(__file__).parents[1] / "computers" / "disk" / "linux"
 
@@ -78,8 +79,11 @@ EXAMPLE_IMAGES = (PublishedImage("agentenv-mail-mcp", _EXAMPLES / "mail-mcp" / "
 COMPUTER_IMAGES = (PublishedImage("agentenv-ubuntu-24.04", _COMPUTERS / "ubuntu-24.04" / "Dockerfile"),
                    PublishedImage("agentenv-ubuntu-24.04-browser",
                                   _COMPUTERS / "ubuntu-24.04-browser" / "Dockerfile"))
+# The osworld bundle's controller, which osworld_deploy_controller deploys by default, so a remote sandbox pulls it.
+OSWORLD_IMAGES = (PublishedImage("agentenv-osworld-controller",
+                                 _OSWORLD / "artifacts" / "osworld-controller" / "Dockerfile"),)
 # The shipped bundles' published images, whose requirements keep a protocol floor.
-BUNDLE_IMAGES = AGENT_IMAGES + EXAMPLE_IMAGES + COMPUTER_IMAGES
+BUNDLE_IMAGES = AGENT_IMAGES + EXAMPLE_IMAGES + COMPUTER_IMAGES + OSWORLD_IMAGES
 # What makes and boots a Linux disk form: the disk tools a build runs on its own platform, and the QEMU launcher.
 DISK_TOOLS_IMAGE = PublishedImage("agentenv-disk-tools", DISK / "tools" / "Dockerfile")
 LAUNCHER_IMAGE = PublishedImage("agentenv-qemu-launcher", DISK / "launcher" / "Dockerfile")

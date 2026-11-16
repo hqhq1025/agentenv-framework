@@ -1,10 +1,13 @@
 """The osworld-server app: its card advertises the osworld-guest/v1 extension at the prefix its server forwards to the
 guest server under, that forward keeps the method, path, query and body and drops the computer's control token, an
-unreachable guest server is a 502, and staging copies the app's folder with the guest server's source."""
+unreachable guest server is a 502, the computer fetches upstream OSWorld's guest server at the package's commit, checked
+by sha256, and the start script runs it on loopback without Werkzeug's debugger; the osworld bundle ships the app and the
+controller image under their aliases, and the image fetches upstream at the same commit."""
 from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import tomllib
 
@@ -16,7 +19,6 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from agent_env.task_step.task_steps.computer import osworld
-from agent_env.task_step.task_steps.computer.osworld.__main__ import main
 
 
 @pytest.fixture(scope="module")
@@ -90,15 +92,31 @@ def test_an_unreachable_guest_server_is_a_502(app_module):
     assert response.status_code == 502 and "unreachable" in response.text
 
 
-def test_staging_copies_the_app_with_the_guest_servers_source(tmp_path):
-    source = tmp_path / "src"
-    source.mkdir()
-    for name in osworld.PAYLOAD_FILES:
-        (source / name).write_text(f"# {name}")
-    out = tmp_path / "out"
-    assert main(["stage", "--source", str(source), "--out", str(out)]) == 0
-    assert (out / "env.toml").is_file() and (out / "start-osworld-server.sh").is_file()
-    assert (out / "payload" / "main.py").read_text() == "# main.py"
-    assert main(["stage", "--source", str(source), "--out", str(out)]) == 1
-    with pytest.raises(FileNotFoundError, match="pyxcursor.py"):
-        (source / "pyxcursor.py").unlink() or osworld.stage_server(source, tmp_path / "again")
+def test_the_computer_fetches_upstreams_guest_server_at_the_packages_commit_checked_by_sha256(app_module):
+    downloads = app_module.OSWorldServer._installs["linux"].install.downloads
+    assert app_module.OSWORLD_COMMIT == osworld.OSWORLD_COMMIT
+    assert {(d.url, d.sha256, d.to) for d in downloads} == {
+        (f"https://raw.githubusercontent.com/xlang-ai/OSWorld/{osworld.OSWORLD_COMMIT}/desktop_env/server/{name}", sha256,
+         f"payload/{name}") for name, sha256 in app_module.GUEST_FILES.items()}
+    assert set(app_module.GUEST_FILES) == {"main.py", "pyxcursor.py", "screen_recording.py"}
+
+
+def test_the_start_script_runs_the_guest_server_on_loopback_without_the_debugger():
+    script = (osworld.APP_DIR / "start-osworld-server.sh").read_text()
+    assert 'run_name="osworld_guest"' in script and 'run_name="__main__"' not in script
+    assert 'run(host="127.0.0.1", port=5000, debug=False' in script
+
+
+def test_the_bundle_ships_the_app_and_the_controller_under_their_aliases():
+    aliases = tomllib.loads((osworld.BUNDLE_DIR / "aliases.toml").read_text())
+    assert aliases == {"envs": {osworld.APP_NAME: [osworld.APP_NAME]},
+                       "artifacts": {"osworld-controller": ["osworld-controller"]}}
+    assert osworld.CONTROLLER_DIR.name == "osworld-controller" and (osworld.CONTROLLER_DIR / "Dockerfile").is_file()
+
+
+def test_the_controller_image_fetches_upstream_at_the_packages_commit():
+    fetch = (osworld.CONTROLLER_DIR / "fetch-osworld.sh").read_text()
+    dockerfile = (osworld.CONTROLLER_DIR / "Dockerfile").read_text()
+    assert re.search(r"^COMMIT=(\w+)$", fetch, re.M).group(1) == osworld.OSWORLD_COMMIT
+    assert re.search(r"^SHA256=[0-9a-f]{64}$", fetch, re.M) and "sha256sum -c" in fetch
+    assert f"OSWORLD_COMMIT={osworld.OSWORLD_COMMIT}" in dockerfile and "--require-hashes" in dockerfile

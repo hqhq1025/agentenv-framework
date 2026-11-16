@@ -58,6 +58,7 @@ updates:
       - "/src/agent_env/examples/mail-mcp/envs/mail"
       - "/src/agent_env/computers/artifacts/ubuntu-24.04"
       - "/src/agent_env/computers/artifacts/ubuntu-24.04-browser"
+      - "/src/agent_env/task_step/task_steps/computer/osworld/artifacts/osworld-controller"
       - "/src/agent_env/computers/disk/linux/boot"
       - "/src/agent_env/computers/disk/linux/tools"
       - "/src/agent_env/computers/disk/linux/launcher"

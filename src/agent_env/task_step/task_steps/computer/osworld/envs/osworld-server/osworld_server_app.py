@@ -1,6 +1,7 @@
-"""The ``osworld-server`` computer app: the OSWorld guest server, which a CUA VM runs on port 5000, run on a computer
-as the session user from the source staged under ``payload/`` (``agent_env.task_step.task_steps.computer.osworld.stage_server``), so the
-``osworld_*`` steps set up and grade OSWorld tasks there. Its own server forwards ``/osworld/<route>`` to the guest
+"""The ``osworld-server`` computer app: upstream OSWorld's guest server, which an OSWorld VM runs on port 5000, run on a
+computer as the session user, so the ``osworld_*`` steps set up and grade OSWorld tasks there. Its source is upstream's
+``desktop_env/server/`` at ``OSWORLD_COMMIT`` (xlang-ai/OSWorld, Apache-2.0), downloaded into ``payload/`` and checked by
+sha256 (``GUEST_FILES``) when the computer installs the app, and run unmodified on 127.0.0.1 only. Its own server forwards ``/osworld/<route>`` to the guest
 server, and its card advertises that prefix as the endpoint of the ``osworld-guest/v1`` extension, which the computer
 roots where it serves the app and guards with the env's control token. The OSWorld controller, deployed beside the
 computer by ``osworld_deploy_controller``, reads the endpoint from the computer's card; an agent can't reach it there.
@@ -13,8 +14,8 @@ from typing import Any
 
 import httpx
 from agentenv_protocol import extension
-from agentenv_protocol.computer import (ComputerAppEnvironment, Packages, ReadyCheck, Service, computer_app, linux,
-                                        ready_check)
+from agentenv_protocol.computer import (ComputerAppEnvironment, Download, Packages, ReadyCheck, Service, computer_app,
+                                        linux, ready_check)
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -22,6 +23,16 @@ GUEST_EXTENSION = "urn:agentenv:osworld-guest/v1"
 PREFIX = "/osworld"
 HOST, PORT = "127.0.0.1", 5000
 UPSTREAM = f"http://{HOST}:{PORT}"
+#: The upstream OSWorld commit the guest server is fetched at, as the package's ``OSWORLD_COMMIT`` names it (this file
+#: runs on the computer, where agent-env isn't installed).
+OSWORLD_COMMIT = "5123bfdbbc34b947bcffcff564abc62d0ab7072d"
+#: The guest server's files, from upstream's ``desktop_env/server/``, by their sha256: ``main.py`` imports the other two.
+GUEST_FILES = {
+    "main.py": "efd969e8b3b272b3694cb66450ddb7c90818970c98bd153f5a2050363cdb88c7",
+    "pyxcursor.py": "87d09a465bf87c3766ac3b8584f80c3288890e874b45d9a56b811b0a4268e840",
+    "screen_recording.py": "68ad468287b11cd1583df361bb06126151f93af97f1807dcd6ed1885bb890d06",
+}
+GUEST_SOURCE = f"https://raw.githubusercontent.com/xlang-ai/OSWorld/{OSWORLD_COMMIT}/desktop_env/server"
 METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 #: Setup downloads task assets and evaluation runs long checks; the controller allows each up to 1800 s.
 TIMEOUT_S = 1800.0
@@ -59,6 +70,8 @@ def guest_server_check() -> ReadyCheck:
 
 @computer_app(supports=[{"os": {"type": "linux", "display": ["x11"]}, "arch": ["amd64", "arm64"]}])
 @linux(packages=Packages(apt=PACKAGES), python="requirements.txt",
+       downloads=[Download(url=f"{GUEST_SOURCE}/{name}", sha256=sha256, to=f"payload/{name}")
+                  for name, sha256 in GUEST_FILES.items()],
        services=[Service(name="osworld-server", command="bash start-osworld-server.sh")])
 class OSWorldServer(ComputerAppEnvironment):
     """The OSWorld guest server, forwarded under ``/osworld/`` to the controller beside the computer."""

@@ -163,7 +163,7 @@ _DOCKERFILES = {
     WEBSITE_BROWSER: [PLAYWRIGHT_MCP_DOCKERFILE],
 }
 # The image each shipped Dockerfile is published as: the infra envs', the disk tools and QEMU launcher, the shipped
-# agents', an example env's, the base computers' and their disk forms.
+# agents', an example env's, the base computers' and their disk forms, and the OSWorld controller.
 PUBLISHED_IMAGES = (
     PublishedImage("agentenv-gateway", GATEWAY_DOCKERFILE),
     PublishedImage("agentenv-service-db", SERVICE_DB_DOCKERFILE),

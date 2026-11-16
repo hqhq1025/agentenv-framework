@@ -1,7 +1,9 @@
 """``osworld_initialize``: an OSWorld task set up on a computer through the controller ``osworld_deploy_controller``
 deployed beside it. An OSWorld-V2 task (``osworld_v2_task_path``, a ``task_NNN.py`` whose ``TASK_CLASS.setup()`` the
 controller runs) resets the controller and initializes the task; a classic one runs its ``init_config``, OSWorld's
-``[{type, parameters}]``, through the controller's ``/setup``, which serves every setup type."""
+``[{type, parameters}]``, through the controller's ``/setup``, which serves every setup type. The ``osworld`` bundle's
+controller, the default, runs upstream OSWorld's setup; an OSWorld-V2 task needs a controller image that serves
+``/initialize_task``, and the default's 501 fails the step with why."""
 from __future__ import annotations
 
 import logging

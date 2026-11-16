@@ -63,6 +63,7 @@ IMAGES = {
     "agentenv-mail-mcp": "src/agent_env/examples/mail-mcp/envs/mail/Dockerfile",
     "agentenv-ubuntu-24.04": "src/agent_env/computers/artifacts/ubuntu-24.04/Dockerfile",
     "agentenv-ubuntu-24.04-browser": "src/agent_env/computers/artifacts/ubuntu-24.04-browser/Dockerfile",
+    "agentenv-osworld-controller": "src/agent_env/task_step/task_steps/computer/osworld/artifacts/osworld-controller/Dockerfile",
     "agentenv-disk-tools": "src/agent_env/computers/disk/linux/tools/Dockerfile",
     "agentenv-qemu-launcher": "src/agent_env/computers/disk/linux/launcher/Dockerfile",
     "agentenv-ubuntu-24.04-disk": "src/agent_env/computers/disk/linux/boot/Dockerfile",
@@ -106,7 +107,8 @@ _RETRY_WAITS_SECONDS = (30, 60, 120)
 # browser answer their own commands, Claude Code's, Codex's, Gemini's, Hermes', OpenCode's and pi's agents run their
 # CLIs and import their servers, OpenHands' imports its server, which loads the OpenHands SDK, Pydantic AI's imports its
 # server, which loads Pydantic AI, Browser Use's loads browser-use in its own environment and imports its server, the proxy imports its
-# server, the mail example's env imports its server, and the base computer's desktop comes up, every program running.
+# server, the mail example's env imports its server, the OSWorld controller imports upstream OSWorld's setup, getters
+# and metrics through its runtime, and the base computer's desktop comes up, every program running.
 _SMOKES = {
     "agentenv-gateway": ["docker", "run", "--rm", "--entrypoint", "python", "{image}", "-c", "import gateway.entrypoint"],
     "agentenv-db-web": ["docker", "run", "--rm", "--entrypoint", "/usr/bin/pgweb", "{image}", "--version"],
@@ -134,6 +136,8 @@ _SMOKES = {
     "agentenv-proxy": ["docker", "run", "--rm", "--entrypoint", "sh", "{image}", "-c", 'python -c "import a2a_server"'],
     "agentenv-pydantic-ai": ["docker", "run", "--rm", "--entrypoint", "sh", "{image}", "-c", 'python -c "import a2a_server"'],
     "agentenv-mail-mcp": ["docker", "run", "--rm", "--entrypoint", "python", "{image}", "-c", "import server"],
+    "agentenv-osworld-controller": ["docker", "run", "--rm", "--entrypoint", "python", "{image}", "-c",
+                                    "import runtime, serve"],
     "agentenv-ubuntu-24.04": ["docker", "run", "--rm", "--entrypoint", "sh", "{image}", "-c",
                               "start-desktop init & for _ in $(seq 60); do sleep 1;"
                               " s=$(supervisorctl -c /etc/supervisor/supervisord.conf status);"

@@ -1,0 +1,48 @@
+# What the controller imports: its own server, and upstream OSWorld's controllers, getters and metrics at
+# OSWORLD_COMMIT, at upstream's own pins where it has them (its requirements.txt). Left out: easyocr (stubbed; it pulls
+# torch in for compare_image_text alone), gymnasium (DesktopEnv isn't imported), and upstream's agent, model and cloud
+# SDKs. requirements.txt is this, locked with hashes:
+#   uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --exclude-newer <two weeks back> -o requirements.txt
+# The controller's server.
+starlette
+uvicorn
+httpx
+# Upstream's controllers.
+requests
+urllib3
+requests-toolbelt~=1.0.0
+websocket-client>=1.8.0
+python-dotenv
+playwright
+pydrive
+# Upstream's getters and metrics.
+numpy~=1.26.0
+Pillow~=11.0.0
+pandas~=2.2.3
+pytz~=2024.1
+opencv-python-headless~=4.8.1.78
+openpyxl
+lxml
+cssselect
+xmltodict
+PyYAML
+rapidfuzz
+python-docx
+python-pptx
+odfpy
+pypdf
+PyPDF2
+pdfplumber
+pymupdf
+borb<3
+beautifulsoup4
+scikit-image
+scipy
+ImageHash
+librosa
+pyacoustid
+fastdtw
+mutagen
+formulas
+tldextract

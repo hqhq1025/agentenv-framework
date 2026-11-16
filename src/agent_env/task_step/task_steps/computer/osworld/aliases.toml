@@ -1,0 +1,6 @@
+# Ids a task can name this bundle's app and controller image by; a store's entity of the id wins over an alias.
+[envs]
+osworld-server = ["osworld-server"]
+
+[artifacts]
+osworld-controller = ["osworld-controller"]

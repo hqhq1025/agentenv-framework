@@ -37,12 +37,14 @@ _DIGEST = "sha256:" + "b" * 64
 
 
 def test_every_shipped_dockerfile_is_published_once_under_a_name_of_its_own():
-    """The infra envs', every shipped agent's, the env `a2a-agent validate` deploys, every shipped base computer's, and
-    the Linux disk form's recipe: its disk tools, its QEMU launcher, and each base's disk, from the boot recipe."""
+    """The infra envs', every shipped agent's, the env `a2a-agent validate` deploys, every shipped base computer's, the
+    OSWorld controller, and the Linux disk form's recipe: its disk tools, its QEMU launcher, and each base's disk, from
+    the boot recipe."""
     shipped = [dockerfile for dockerfiles in bootstrap._DOCKERFILES.values() for dockerfile in dockerfiles]
     shipped += published_images._AGENTS.glob("*/Dockerfile")
     shipped.append(published_images._EXAMPLES / "mail-mcp" / "envs" / "mail" / "Dockerfile")
     shipped += published_images._COMPUTERS.glob("*/Dockerfile")
+    shipped.append(published_images._OSWORLD / "artifacts" / "osworld-controller" / "Dockerfile")
     shipped += DISK.glob("*/Dockerfile")
     shipped += [DISK / "boot" / "Dockerfile"] * (len(DISK_IMAGES) - 1)
 

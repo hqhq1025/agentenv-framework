@@ -3,7 +3,11 @@ beside it, so no grading runs where the agent can reach it. An OSWorld-V2 task i
 on the controller; a classic one by each of its ``evaluator``'s funcs, sent to the controller's ``/evaluate`` one at a
 time with its ``result`` and ``expected`` getters and its ``options``, and combined by its ``conj`` as OSWorld's
 ``DesktopEnv.evaluate`` combines them: ``and`` is 0 when any func scores 0, else their mean; ``or`` is their max. The
-verdict goes to ``context.metadata["verifications"][verifier_id]`` as ``{"results", "score"}``."""
+verdict goes to ``context.metadata["verifications"][verifier_id]`` as ``{"results", "score"}``.
+
+The ``osworld`` bundle's controller, the default, serves upstream OSWorld's funcs. An LLM-judge func and an OSWorld-V2
+task are sent the same way but graded only by a controller image that serves them, named by the
+``osworld_deploy_controller`` step; the default answers them 501, which scores the func 0 with why."""
 from __future__ import annotations
 
 import logging

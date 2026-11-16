@@ -113,7 +113,7 @@ async def test_deploy_runs_the_controller_against_the_card_endpoint_and_records_
     with caplog.at_level(logging.DEBUG):
         await step.execute(context)
 
-    deploy.get.assert_called_once_with("cua-controller")
+    deploy.get.assert_called_once_with(deploy_module.DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID)
     kwargs = deploy.provider.create_container.call_args.kwargs
     assert kwargs["image_name"] == "ghcr.io/example/controller:1" and kwargs["port"] == 8000
     assert kwargs["env"] == {"JUDGE_MODEL": "m", "PROVIDER": "remote", "OS_TYPE": "Ubuntu",
