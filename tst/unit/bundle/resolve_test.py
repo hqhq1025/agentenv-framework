@@ -46,11 +46,19 @@ class _Plugin(TaskStep):
     type = "plugin_test"
 
 
+class _Defaulted(TaskStep):
+    """A step type whose image field falls back to an id of its own."""
+
+    type = "defaulted_test"
+    entity_refs = (EntityRef.artifact("image", artifact_type="docker_image", default="base-mcp"),)
+
+
 @pytest.fixture(autouse=True)
 def registries(monkeypatch):
     envs, steps = resolve_module.get_env_registry(), resolve_module.get_task_step_registry()
     monkeypatch.setattr(resolve_module, "get_env_registry", lambda: {**envs, _Composite.type: _Composite})
-    monkeypatch.setattr(resolve_module, "get_task_step_registry", lambda: {**steps, _Plugin.type: _Plugin})
+    monkeypatch.setattr(resolve_module, "get_task_step_registry", lambda: {**steps, _Plugin.type: _Plugin,
+                                                                              _Defaulted.type: _Defaulted})
 
 
 @pytest.fixture
@@ -648,3 +656,23 @@ def test_a_prompt_agent_tasks_played_deploy_is_as_on_main():
     ])
 
     assert played_deploys(task) == frozenset({"agent"})
+
+
+def test_a_field_left_unset_names_its_default_which_resolves_as_if_written(make):
+    bundle = make(tasks={"t": [{"id": "a", "type": "defaulted_test"}, {"id": "b", "type": "defaulted_test",
+                                                                          "image": "base-mcp", "depends_on": ["a"]}]})
+    entry = resolved(bundle, "t")
+    assert [step["image"] for step in entry.config] == [f"{ROOT}/base-mcp"] * 2
+    assert [(ref.kind, ref.id) for ref in entry.references] == [(EntityKind.ARTIFACT, f"{ROOT}/base-mcp")] * 2
+
+
+@pytest.mark.parametrize("ref", [
+    lambda: EntityRef.agent("agent_id", default="claude-code"),
+    lambda: EntityRef.artifact("images[]", default="x"),
+    lambda: EntityRef.artifact("spec.image", default="x"),
+    lambda: EntityRef.artifact("image", default=""),
+])
+def test_a_default_is_only_for_a_top_level_input_field_other_than_an_agents(ref):
+    with pytest.raises(ValueError, match="a default is for a top-level input field"):
+        ref()
+

@@ -21,7 +21,9 @@ declarations are not inherited, so a subclass declares its own; ``toml_refs`` ar
 is.
 
 A step's agent field left unset falls back to the configured default agent (``[agents] default_a2a_agent_id``), so a
-tool reading a step knows which agent it may deploy without being told (``default_agent_refs``).
+tool reading a step knows which agent it may deploy without being told (``default_agent_refs``). Another top-level
+field may name the id it falls back to itself (``EntityRef(default=...)``), which a bundle run writes into a step that
+leaves the field unset before resolving it, so an installed bundle's alias of that id is pulled in (``default_refs``).
 """
 
 from __future__ import annotations
@@ -57,7 +59,8 @@ class EntityRef:
     ref may carry next to it, which its type reads (a computer env's app takes ``install``). ``walk``,
     for a shape a path cannot spell, maps the value at the path's parent to the dicts that hold the
     last key, each with its path parts. ``optional``, for an image a toml may leave out, means a
-    folder with no Dockerfile for it builds none.
+    folder with no Dockerfile for it builds none. ``default``, for a top-level input field, is the id a step that leaves
+    it unset names, which the step type falls back to as well.
     Declarations build one with ``EntityRef.env``, ``EntityRef.agent`` or ``EntityRef.artifact``,
     passing the keyword fields."""
 
@@ -71,6 +74,7 @@ class EntityRef:
     beside: tuple[str, ...] = ()
     walk: Walker | None = None
     optional: bool = False
+    default: str | None = None
 
     @classmethod
     def env(cls, path: str, **options: Any) -> EntityRef:
@@ -102,6 +106,10 @@ class EntityRef:
             raise ValueError(f"entity ref {self.path!r}: artifact_type is only for EntityKind.ARTIFACT")
         if self.env_type is not None and self.kind is not EntityKind.ENV:
             raise ValueError(f"entity ref {self.path!r}: env_type is only for EntityKind.ENV")
+        if self.default is not None and (self.path != self.field or self.role is not RefRole.INPUT
+                                         or self.kind is EntityKind.AGENT or not self.default):
+            raise ValueError(f"entity ref {self.path!r}: a default is for a top-level input field other than an agent's, "
+                             "which falls back to the configured default agent, and names an id")
 
     @property
     def field(self) -> str:
@@ -137,6 +145,11 @@ def default_agent_refs(refs: Iterable[EntityRef], step: dict) -> list[EntityRef]
     doesn't set."""
     return [ref for ref in refs if ref.kind is EntityKind.AGENT and ref.role is RefRole.INPUT and ref.path == ref.field
             and step.get(ref.field) is None]
+
+
+def default_refs(refs: Iterable[EntityRef], step: dict) -> list[EntityRef]:
+    """The fields ``step`` leaves unset that name a default of their own."""
+    return [ref for ref in refs if ref.default is not None and step.get(ref.field) is None]
 
 
 def parse_toml_ref(kind: EntityKind, value: Any, beside: tuple[str, ...] = ()) -> tuple[str, int | None]:
