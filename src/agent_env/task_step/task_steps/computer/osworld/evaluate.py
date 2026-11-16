@@ -146,8 +146,12 @@ class OSWorldEvaluateTaskStep(TaskStep):
         if prompt_response is not None and prompt_response.error_type and budget is None:
             return self._skipped(context, prompt_response)
         run_judge_model = (context.metadata.get("user_overrides") or {}).get("judge_model")
-        if any(is_judge(func) for func, *_ in self._funcs()):
-            context.record_model("judge", self.id, run_judge_model or self.judge_model)
+        judge_models = [self._judge_model(options, run_judge_model)
+                        for func, _, _, options in self._funcs() if is_judge(func)]
+        if judge_models:
+            # The models the judge funcs are sent, each func's own option included; None leaves the controller's default.
+            named = sorted({m for m in judge_models if m})
+            context.record_model("judge", self.id, ", ".join(named) or None)
         verification = await self._evaluate_funcs(endpoint, prompt_response, run_judge_model)
         if budget is not None and prompt_response is not None:
             # The score is the end state's, earned after the agent ran out of room; the marker beside the verifications
@@ -196,18 +200,18 @@ class OSWorldEvaluateTaskStep(TaskStep):
                              f"one per func, got {got}")
         return value
 
+    def _judge_model(self, options: dict, run_judge_model: str | None) -> str | None:
+        """A judge func's model: the run's (``user_overrides.judge_model``), else its own option's, else the step's
+        ``judge_model``; None leaves the controller's default."""
+        return run_judge_model or options.get("model") or self.judge_model
+
     def _payload(self, func: str, result: Any, expected: Any, options: dict, instruction: str | None,
                  run_judge_model: str | None) -> dict:
-        """The controller's ``/evaluate`` body for one func. A judge func's ``model`` is the run's
-        (``user_overrides.judge_model``), else its own option's, else the step's ``judge_model``."""
-        options = dict(options)
-        if is_judge(func):
-            if run_judge_model:
-                options["model"] = run_judge_model
-            elif self.judge_model:
-                options.setdefault("model", self.judge_model)
-        else:
-            options.pop("model", None)
+        """The controller's ``/evaluate`` body for one func, a judge func's ``model`` as ``_judge_model`` picks it."""
+        model = self._judge_model(options, run_judge_model) if is_judge(func) else None
+        options = {key: value for key, value in options.items() if key != "model"}
+        if model:
+            options["model"] = model
         payload: dict[str, Any] = {"func": func, "options": options}
         if result is not None:
             payload["result"] = result

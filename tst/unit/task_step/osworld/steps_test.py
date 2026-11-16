@@ -535,6 +535,30 @@ async def test_evaluate_gives_the_judge_funcs_the_runs_judge_model_ahead_of_thei
 
 
 @pytest.mark.asyncio
+async def test_evaluate_records_the_judge_models_the_funcs_are_sent(ctl):
+    """Without a run override, a judge func's own model is the one that grades it, so the summary names it."""
+    _scores(ctl, 1, 1, 1)
+    evaluator = {"funcs": ["agent_judge", "agent_judge_zip", "compare_table"],
+                 "options": [{"model": "task-m"}, {}, {}], "rubric": [{"criterion": "x"}]}
+    context = _context(_ready(), _prompt())
+    await OSWorldEvaluateTaskStep(id="e", version=1, env_id="desk", verifier_id="v", evaluator=evaluator,
+                                  judge_model="step-m").execute(context)
+    judge, zipped, _ = ctl.bodies("/evaluate")
+    assert judge["options"] == {"model": "task-m"} and zipped["options"] == {"model": "step-m"}
+    assert context.metadata["models"]["judge"] == {"e": "step-m, task-m"}
+
+
+@pytest.mark.asyncio
+async def test_evaluate_records_no_judge_model_when_the_controller_picks_it(ctl):
+    _scores(ctl, 1)
+    context = _context(_ready(), _prompt())
+    await OSWorldEvaluateTaskStep(id="e", version=1, env_id="desk", verifier_id="v",
+                                  evaluator={"funcs": "agent_judge", "rubric": [{"criterion": "x"}]}).execute(context)
+    assert "model" not in ctl.bodies("/evaluate")[0]["options"]
+    assert context.metadata["models"]["judge"] == {"e": None}
+
+
+@pytest.mark.asyncio
 async def test_every_agent_judge_variant_is_sent_as_a_judge(ctl):
     """The controller's per-format judges (agent_judge_zip, _blend, _godot, _log, _gz, _fcstd, ...) take the judge's
     model and the task's rubric as agent_judge does."""
