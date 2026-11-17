@@ -17,7 +17,7 @@ import pytest
 
 from agent_env.artifact import DockerImageArtifact
 from agent_env.task_step.task_steps.computer.osworld import controller, guest
-from agent_env.task_step.context import PromptResponse, StepContextError, TaskStepContext
+from agent_env.task_step.context import DeployedSandbox, PromptResponse, StepContextError, TaskStepContext
 from agent_env.task_step.registry import get_task_step_registry
 from agent_env.task_step.task_steps.computer.osworld import deploy_controller as deploy_module
 from agent_env.task_step.task_steps.computer.osworld.deploy_controller import OSWorldDeployControllerTaskStep
@@ -258,6 +258,27 @@ async def test_deploy_on_a_resumed_run_replaces_the_controller_whose_token_wasnt
     assert resumed.metadata[guest.CONTROLLERS_KEY]["desk"][guest.CONTROLLER_SANDBOX_ID_KEY] == "sb-2"
     assert guest.controller_token(resumed.deployed_envs[0], resumed) == "fresh-t0ken"
     assert deploy.provider.create_container.call_args.kwargs["env"]["CONTROLLER_AUTH_TOKEN"] == "fresh-t0ken"
+
+
+@pytest.mark.asyncio
+async def test_deploy_on_a_run_resumed_again_terminates_every_controller_its_stored_context_still_lists(deploy,
+                                                                                                         monkeypatch):
+    # The store keeps a sandbox's record once added, so a second resume lists the first controller and the second.
+    resumed = TaskStepContext()
+    resumed.deployed_envs.append(computer())
+    resumed.deployed_sandboxes.extend(DeployedSandbox(sandbox_name="osworld-controller-desk", sandbox_id=sandbox_id,
+                                                      sandbox_mode="container", sandbox_type="docker")
+                                      for sandbox_id in ("sb-0", "sb-1"))
+    terminated = AsyncMock()
+    monkeypatch.setattr(deploy_module, "terminate", terminated)
+    deploy.provider.create_container.return_value = SimpleNamespace(
+        sandbox_id="sb-2", mode="container", type="docker", tunnel_urls={8000: CONTROLLER}, terminate=AsyncMock())
+
+    await OSWorldDeployControllerTaskStep(id="a", version=1, env_id="desk").execute(resumed)
+
+    assert [call.args[0].sandbox_id for call in terminated.await_args_list] == ["sb-0", "sb-1"]
+    assert [s.sandbox_id for s in resumed.deployed_sandboxes] == ["sb-2"] and \
+        resumed.metadata[guest.CONTROLLER_TOKENS_KEY] == {"desk": CONTROLLER_TOKEN}
 
 
 @pytest.mark.asyncio

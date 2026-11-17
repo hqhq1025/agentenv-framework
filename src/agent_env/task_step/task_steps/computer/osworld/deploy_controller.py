@@ -110,7 +110,7 @@ class OSWorldDeployControllerTaskStep(TaskStep):
         if deployed is None:
             raise StepContextError(f"Env '{self.env_id}' not found in context.deployed_envs")
         sandbox_name = f"{SANDBOX_NAME_PREFIX}{self.env_id}"
-        if previous := next((s for s in context.deployed_sandboxes if s.sandbox_name == sandbox_name), None):
+        if previous := [s for s in context.deployed_sandboxes if s.sandbox_name == sandbox_name]:
             if self.env_id in (context.metadata.get(guest.CONTROLLER_TOKENS_KEY) or {}):
                 raise StepContextError(f"Sandbox '{sandbox_name}' is already deployed")
             await self._replace(previous, context)
@@ -139,17 +139,20 @@ class OSWorldDeployControllerTaskStep(TaskStep):
         logger.info(f"OSWorld controller for env '{self.env_id}' at {controller_url} (sandbox {sandbox.sandbox_id})")
         return context
 
-    async def _replace(self, previous: DeployedSandbox, context: TaskStepContext) -> None:
-        """Let go of the controller ``previous`` records, whose token this run no longer has: a run resumed from its
-        stored context, which never holds the token. A new controller is deployed in its place, with a new token."""
-        logger.info(f"The OSWorld controller for env '{self.env_id}' (sandbox {previous.sandbox_id}) has no token in "
-                    f"this run's context; replacing it")
-        try:
-            await terminate(RecordedSandbox(previous.sandbox_id, previous.sandbox_type, "sandbox"))
-        except Exception as e:
-            logger.warning(f"terminating the previous OSWorld controller {previous.sandbox_id} failed: "
-                           f"{type(e).__name__}: {str(e)[:300]}; its TTL ends it")
-        context.deployed_sandboxes.remove(previous)
+    async def _replace(self, previous: list[DeployedSandbox], context: TaskStepContext) -> None:
+        """Let go of the controllers ``previous`` records, whose token this run no longer has: a run resumed from its
+        stored context, which never holds the token. A new controller is deployed in their place, with a new token.
+        The store keeps a sandbox's record once it's added, so a run resumed again lists every controller it has had;
+        each is terminated, the one already gone as a no-op, so the live one is never missed."""
+        logger.info(f"The OSWorld controller for env '{self.env_id}' has no token in this run's context; replacing "
+                    f"sandbox(es) {[s.sandbox_id for s in previous]}")
+        for sandbox in previous:
+            try:
+                await terminate(RecordedSandbox(sandbox.sandbox_id, sandbox.sandbox_type, "sandbox"))
+            except Exception as e:
+                logger.warning(f"terminating the previous OSWorld controller {sandbox.sandbox_id} failed: "
+                               f"{type(e).__name__}: {str(e)[:300]}; its TTL ends it")
+            context.deployed_sandboxes.remove(sandbox)
         (context.metadata.get(guest.CONTROLLERS_KEY) or {}).pop(self.env_id, None)
 
     async def _create(self, provider: SandboxProvider, deployed, guest_url: str, image: DockerImageArtifact, token: str,
