@@ -1044,6 +1044,29 @@ async def test_export_of_a_child_env_missing_from_the_card_streams_legacy_export
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("token, sent_as", [("t0ken", "Bearer t0ken"), (None, None)], ids=["token", "no-token"])
+async def test_export_streams_export_snapshot_and_export_state_with_the_records_control_token(monkeypatch, tmp_path, token, sent_as):
+    """gdrive streams its bundle from its export-snapshot; slack serves no card, so its state streams from its export-state."""
+    from agent_env.task_step.task_steps import snapshot_env as mod
+
+    record = DeployedGatewayEnv(
+        env_id="env-1", env_version=3, gateway_url="https://gw-1", mcp_url="https://gw-1/mcp", db_web_url=None,
+        sandbox_id="sb-1", environment_card_url=f"https://gw-1{WELL_KNOWN_PATH}",
+        environment_card=await _card({"mcp-gdrive": []}), control_token=token)
+    sent = _mock_http(monkeypatch, body=b"{}", rpc_result={"parts": [
+        {"kind": "file", "file": {"uri": "export-snapshot?stream=1", "name": "gdrive.zip"}}]})
+
+    for name in ("gdrive", "slack"):
+        await mod.SnapshotEnvTaskStep._export_environment_to_file("https://gw-1", name, str(tmp_path / name), 30, record)
+
+    assert [(r.method, str(r.url), r.headers.get("authorization")) for r in sent] == [
+        ("POST", "https://gw-1/svc/mcp-gdrive/agentenv", sent_as),
+        ("GET", "https://gw-1/svc/mcp-gdrive/export-snapshot?stream=1", sent_as),
+        ("GET", "https://gw-1/svc/mcp-slack/export-state", sent_as),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_snapshot_uses_the_stored_card_only_for_the_deployments_own_gateway(monkeypatch):
     """An override's gateway has its card read live, and the record's stored card describes its own gateway only."""
     seen = []

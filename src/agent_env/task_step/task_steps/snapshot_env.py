@@ -588,6 +588,7 @@ class SnapshotEnvTaskStep(TaskStep):
                             timeout=httpx.Timeout(
                                 timeout_seconds, connect=_CONNECT_TIMEOUT_SECONDS
                             ),
+                            headers=protocol_v1.request_headers(uri, headers),
                         ) as resp_file:
                             resp_file.raise_for_status()
                             with open(tmp_path, "wb") as f:
@@ -600,11 +601,13 @@ class SnapshotEnvTaskStep(TaskStep):
             return ".json"
 
         legacy_url = f"{legacy_protocol.environment_base_url(gateway_url, environment_name, mcp=True)}/export-state"
+        legacy_headers = deployed.control_headers_for(legacy_url) if deployed is not None else None
         async with httpx.AsyncClient() as client:
             async with client.stream(
                 "GET",
                 legacy_url,
                 timeout=httpx.Timeout(timeout_seconds, connect=_CONNECT_TIMEOUT_SECONDS),
+                headers=protocol_v1.request_headers(legacy_url, legacy_headers),
             ) as resp:
                 resp.raise_for_status()
                 seen_first_bytes = False
