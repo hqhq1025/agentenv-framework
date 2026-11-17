@@ -24,7 +24,7 @@ Any controller image the step deploys is started with this env and serves these 
 
 | Env | |
 | --- | --- |
-| `CONTROLLER_AUTH_TOKEN` | The bearer token every call to the controller must carry; without it a call is 401. The step derives it from the env's control token and refuses a controller that answers without it. |
+| `CONTROLLER_AUTH_TOKEN` | The bearer token every call to the controller must carry; without it a call is 401. The step makes it at random for each deploy, never from the env's control token, which the computer's session can read; it keeps it in the run's live context, never stored, and refuses a controller that answers without it. |
 | `REMOTE_VM_IP` | The guest server's base URL, path prefix and all: the computer's `/osworld` endpoint of the app. |
 | `REMOTE_SERVER_HEADERS` | A JSON object of the headers every call to the guest server carries: the computer's control token. |
 | `PROVIDER` | `remote`: the controller drives a guest server it reaches over HTTP. |

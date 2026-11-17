@@ -61,6 +61,8 @@ class VerifierNotPassingError(RuntimeError):
 
 _REDACTED_KEYS = {
     "litellm_api_key", "judge_litellm_api_key", "usersim_api_key", "remote_tokens", "cf_access_client_secret",
+    # The OSWorld controllers' tokens (task_steps/computer/osworld/guest.py CONTROLLER_TOKENS_KEY).
+    "osworld_controller_tokens",
     HEARTBEAT_KEY,
 }
 

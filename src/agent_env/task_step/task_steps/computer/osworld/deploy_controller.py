@@ -3,8 +3,9 @@
 The controller holds the grader, a task's checks and the judge's key, and a computer's apps run as its session user,
 the agent's, so it runs apart from the computer, in remote mode against the guest server at the endpoint the
 computer's card advertises (:mod:`.guest`), with the env's control token on every call. Its own port may be reachable
-from the computer, so it requires a bearer token derived from that control token (``CONTROLLER_AUTH_TOKEN``) and the
-step refuses a controller that answers without it. The judge's key and endpoint are the run's
+from the computer, so it requires a bearer token of its own (``CONTROLLER_AUTH_TOKEN``), random per deploy and kept
+only in the run's live context, never derived from the control token the computer holds, and the step refuses a
+controller that answers without it. The judge's key and endpoint are the run's
 (``user_overrides.judge_litellm_api_key`` / ``litellm_api_key``, ``judge_litellm_base_url`` / ``litellm_base_url``),
 else the configured ``[model]``'s, as ``rubrics_verifier``'s are. The image is the step's
 ``controller_image_artifact_id``, by default the ``osworld`` bundle's ``osworld-controller``
@@ -75,14 +76,14 @@ class OSWorldDeployControllerTaskStep(TaskStep):
                    ttl_seconds=data.get("ttl_seconds", TaskStep.DEFAULT_TTL_SECONDS), cpu=data.get("cpu", 2.0),
                    memory_mb=data.get("memory_mb", 4096), env_vars=data.get("env_vars"))
 
-    def controller_env(self, deployed, guest_url: str, overrides: Optional[dict] = None) -> dict[str, str]:
-        """Remote mode against the guest server, with the env's control token on every call, the token every call to
-        the controller must carry, and the judge's model endpoint: the run's ``overrides``', else ``[model]``'s."""
+    def controller_env(self, deployed, guest_url: str, token: str, overrides: Optional[dict] = None) -> dict[str, str]:
+        """Remote mode against the guest server, with the env's control token on every call, ``token``, which every
+        call to the controller must carry, and the judge's model endpoint: the run's ``overrides``', else ``[model]``'s."""
         overrides = overrides or {}
         env = {**(self.env_vars or {}), controller.PROVIDER_ENV: controller.REMOTE_PROVIDER,
                controller.OS_TYPE_ENV: controller.OS_TYPE, controller.GUEST_URL_ENV: guest_url,
                controller.GUEST_HEADERS_ENV: json.dumps(deployed.control_headers),
-               CONTROLLER_TOKEN_ENV: guest.controller_token(deployed)}
+               CONTROLLER_TOKEN_ENV: token}
         config = get_config()
         key_ref = overrides.get("judge_litellm_api_key") or overrides.get("litellm_api_key")
         api_key = config.resolve_reference(key_ref) if key_ref else None
@@ -117,30 +118,32 @@ class OSWorldDeployControllerTaskStep(TaskStep):
         provider = skip_refusing(get_sandbox_provider(),
                                  lambda link: pull_problem(image.pinned_name, on_this_machine=link.ON_THIS_MACHINE),
                                  what=f"sandbox '{sandbox_name}'")
-        sandbox = await self._create(provider, deployed, guest_url, image, context)
+        token = guest.new_controller_token()
+        sandbox = await self._create(provider, deployed, guest_url, image, token, context)
         context.deployed_sandboxes.append(DeployedSandbox(
             sandbox_name=sandbox_name, sandbox_id=sandbox.sandbox_id, sandbox_mode=sandbox.mode,
             sandbox_type=sandbox.type,
             tunnel_urls={str(p): u for p, u in sandbox.tunnel_urls.items()} if sandbox.tunnel_urls else None))
         controller_url = sandbox.tunnel_urls[CONTROLLER_PORT]
-        endpoint = controller.Endpoint(controller_url, controller.bearer_headers(guest.controller_token(deployed)))
+        endpoint = controller.Endpoint(controller_url, controller.bearer_headers(token))
         await controller.wait_ready(endpoint)
         await controller.require_auth(endpoint)
         recorded = {guest.CONTROLLER_URL_KEY: controller_url, guest.CONTROLLER_SANDBOX_ID_KEY: sandbox.sandbox_id,
                     guest.GUEST_URL_KEY: guest_url}
         deployed.metadata = {**(deployed.metadata or {}), **recorded}
         context.metadata.setdefault(guest.CONTROLLERS_KEY, {})[self.env_id] = recorded
+        context.metadata.setdefault(guest.CONTROLLER_TOKENS_KEY, {})[self.env_id] = token
         logger.info(f"OSWorld controller for env '{self.env_id}' at {controller_url} (sandbox {sandbox.sandbox_id})")
         return context
 
-    async def _create(self, provider: SandboxProvider, deployed, guest_url: str, image: DockerImageArtifact,
+    async def _create(self, provider: SandboxProvider, deployed, guest_url: str, image: DockerImageArtifact, token: str,
                       context: TaskStepContext) -> Sandbox:
         """The controller's sandbox on the first of ``provider``'s links that creates it, each given the guest server and
         the model endpoint as its own sandboxes reach them: a local container reaches this machine's loopback by
         another name, which a chain of providers can't say for the link it ends up on."""
         errors = []
         for link in provider.links:
-            env = self.controller_env(deployed, link.url_from_sandbox(guest_url),
+            env = self.controller_env(deployed, link.url_from_sandbox(guest_url), token,
                                       context.metadata.get("user_overrides") or {})
             if "LITELLM_BASE_URL" in env:
                 env["LITELLM_BASE_URL"] = link.url_from_sandbox(env["LITELLM_BASE_URL"])

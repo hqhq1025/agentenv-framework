@@ -23,6 +23,7 @@ from agent_env.task_step.task_steps.computer.osworld import deploy_controller as
 from agent_env.task_step.task_steps.computer.osworld.deploy_controller import OSWorldDeployControllerTaskStep
 from agent_env.task_step.task_steps.computer.osworld.evaluate import OSWorldEvaluateTaskStep
 from agent_env.task_step.task_steps.computer.osworld.initialize import OSWorldInitializeTaskStep
+from agent_env.task_step.task_steps.verifiers.aggregate_verifiers import AggregateVerifiersTaskStep
 from tst.unit.task_step.osworld.helpers import (CONTROLLER, CONTROLLER_TOKEN, ENDPOINT, ENV_URL, TOKEN, Controller, card, computer,
                                       route_httpx)
 
@@ -35,6 +36,7 @@ def _context(env, *prompts: PromptResponse) -> TaskStepContext:
     context = TaskStepContext()
     context.deployed_envs.append(env)
     context.prompt_responses.extend(prompts)
+    context.metadata[guest.CONTROLLER_TOKENS_KEY] = {env.env_id: CONTROLLER_TOKEN}
     return context
 
 
@@ -101,6 +103,7 @@ def deploy(monkeypatch):
     monkeypatch.setattr(deploy_module, "get_sandbox_provider", lambda: provider)
     monkeypatch.setattr(deploy_module.controller, "wait_ready", ready)
     monkeypatch.setattr(deploy_module.controller, "require_auth", auth)
+    monkeypatch.setattr(deploy_module.guest, "new_controller_token", lambda: CONTROLLER_TOKEN)
     return SimpleNamespace(provider=provider, ready=ready, auth=auth, get=get)
 
 
@@ -124,6 +127,9 @@ async def test_deploy_runs_the_controller_against_the_card_endpoint_and_records_
     # It's called with the token, and must refuse a call without it.
     deploy.ready.assert_awaited_once_with(ENDPOINT)
     deploy.auth.assert_awaited_once_with(ENDPOINT)
+    # Its token is kept in the live context alone, for the steps after it, and never stored.
+    assert context.metadata[guest.CONTROLLER_TOKENS_KEY] == {"desk": CONTROLLER_TOKEN}
+    assert guest.CONTROLLER_TOKENS_KEY not in context.to_safe_dict()["metadata"]
     assert env.metadata == {"existing": "kept", guest.CONTROLLER_URL_KEY: CONTROLLER,
                             guest.CONTROLLER_SANDBOX_ID_KEY: "sb-1", guest.GUEST_URL_KEY: f"{ENV_URL}/apps/7/osworld"}
     # The run's stored context keeps them too: the env's record is stored once, when it is deployed.
@@ -345,6 +351,19 @@ async def test_evaluate_classic_sends_each_func_and_combines_by_conj(ctl, conj, 
     assert [r["func"] for r in verification["results"]] == ["compare_table", "agent_judge"]
     assert verification["results"][0]["results"] == [
         {"id": "compare_table", "score": float(scores[0]), "result": True, "message": f"got {scores[0]}"}]
+    assert [(r["score"], r["result"]) for r in verification["results"]] == [(float(s), s == 1) for s in scores]
+
+
+@pytest.mark.asyncio
+async def test_aggregate_verifiers_reads_each_funcs_score_from_the_classic_rows(ctl):
+    _scores(ctl, 1, 0.5)
+    context = _context(_ready(), _prompt())
+    await OSWorldEvaluateTaskStep(id="e", version=1, env_id="desk", verifier_id="v",
+                                  evaluator={"funcs": ["compare_table", "file_contains"], "conj": "and"}).execute(context)
+    for aggregator, expected in [("weighted_average", 0.75), ("all_pass", 0.0), ("any_pass", 1.0)]:
+        await AggregateVerifiersTaskStep(id=f"a-{aggregator}", version=1, verifier_ids=["v"], verifier_id=aggregator,
+                                         score_aggregator=aggregator).execute(context)
+        assert context.metadata["verifications"][aggregator]["score"] == expected
 
 
 @pytest.mark.asyncio

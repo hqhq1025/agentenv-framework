@@ -1,14 +1,15 @@
 """Where a computer serves the OSWorld guest server: the endpoint its card advertises for the ``osworld-guest/v1``
 extension, on the card itself or one of its ``children_environments``, resolved against the computer's address.
 ``osworld_deploy_controller`` resolves it once and records it on the env, with the controller's address, under the
-metadata keys here. The controller requires a bearer token derived from the env's control token
-(``controller_token``), so every step that calls it can rebuild it, and none is stored."""
+metadata keys here. The controller requires a bearer token of its own (``new_controller_token``), random per deploy
+and never derived from the env's control token, which the computer holds where its session, and so the agent, can read
+it. The run keeps it in its context under ``CONTROLLER_TOKENS_KEY``, which the store never writes
+(``_REDACTED_KEYS``), so it reaches only the worker that deployed the controller."""
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import logging
+import secrets
 from typing import Any
 
 import httpx
@@ -29,8 +30,10 @@ CONTROLLERS_KEY = "osworld_controllers"
 #: the guest extension, and how often it reads the card again.
 CARD_WAIT_S = 120.0
 CARD_POLL_S = 5.0
-#: What the controller's token is derived for, so it is never the control token itself.
-CONTROLLER_TOKEN_PURPOSE = b"osworld-controller"
+#: ``context.metadata[CONTROLLER_TOKENS_KEY][env_id]``: the token the controller beside that env requires. One of the
+#: context's ``_REDACTED_KEYS``: the live context keeps it, the stored one never has it.
+CONTROLLER_TOKENS_KEY = "osworld_controller_tokens"
+CONTROLLER_TOKEN_BYTES = 32
 
 
 def guest_endpoint(card: dict | None) -> str | None:
@@ -83,15 +86,23 @@ def controller_url(deployed: Any, context: Any = None) -> str:
     raise RuntimeError(f"env '{deployed.env_id}' has no {CONTROLLER_URL_KEY}: run osworld_deploy_controller on it first")
 
 
-def controller_token(deployed: Any) -> str:
-    """The bearer token the controller beside ``deployed`` requires: an HMAC of the env's control token, which only
-    the framework holds. Raises RuntimeError for an env with none, whose controller would be open to anyone."""
-    if not deployed.control_token:
-        raise RuntimeError(f"env '{deployed.env_id}' has no control token to derive its OSWorld controller's from")
-    return hmac.new(deployed.control_token.encode(), CONTROLLER_TOKEN_PURPOSE + b":" + deployed.env_id.encode(),
-                    hashlib.sha256).hexdigest()
+def new_controller_token() -> str:
+    """A token for one controller, random, so nothing the computer holds rebuilds it."""
+    return secrets.token_urlsafe(CONTROLLER_TOKEN_BYTES)
 
 
-def controller_endpoint(deployed: Any, context: Any = None) -> controller.Endpoint:
+def controller_token(deployed: Any, context: Any) -> str:
+    """The bearer token the controller beside ``deployed`` requires, as ``osworld_deploy_controller`` kept it in
+    ``context``. Raises RuntimeError when the context has none: the token is never stored, so a run rebuilt from its
+    stored context alone, without the live one, deploys the controller again."""
+    tokens = (getattr(context, "metadata", None) or {}).get(CONTROLLER_TOKENS_KEY) or {}
+    if not (token := tokens.get(deployed.env_id)):
+        raise RuntimeError(f"env '{deployed.env_id}' has no OSWorld controller token in this run's context: it is "
+                           f"kept only in the live context, never stored; run osworld_deploy_controller in this run")
+    return str(token)
+
+
+def controller_endpoint(deployed: Any, context: Any) -> controller.Endpoint:
     """The controller recorded for ``deployed`` (``controller_url``), with its token on every call."""
-    return controller.Endpoint(controller_url(deployed, context), controller.bearer_headers(controller_token(deployed)))
+    return controller.Endpoint(controller_url(deployed, context),
+                               controller.bearer_headers(controller_token(deployed, context)))

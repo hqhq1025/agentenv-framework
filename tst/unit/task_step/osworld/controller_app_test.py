@@ -343,7 +343,7 @@ def test_the_env_the_step_starts_it_with_is_the_env_it_reads(ctl):
     assert ctl.server.REMOTE_PROVIDER == controller.REMOTE_PROVIDER
     deployed = computer(card("/apps/7/osworld"))
     env = deploy_module.OSWorldDeployControllerTaskStep(id="c", version=1, env_id="desk").controller_env(
-        deployed, "https://env.example/apps/7/osworld")
+        deployed, "https://env.example/apps/7/osworld", "t0ken")
     config = ctl.serve.settings(env)
     assert config["token"] == env[controller.TOKEN_ENV] and config["guest_url"] == "https://env.example/apps/7/osworld"
     assert config["headers"] == deployed.control_headers and config["os_type"] == "Ubuntu"

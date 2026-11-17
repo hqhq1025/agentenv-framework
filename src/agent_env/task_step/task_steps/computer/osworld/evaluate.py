@@ -255,7 +255,9 @@ class OSWorldEvaluateTaskStep(TaskStep):
                                f"{str(e)[:SETUP_ERROR_CHARS]}")
                 sub = {"id": func, "score": FAIL_SCORE, "result": False, "message": f"Exception: {str(e)[:300]}"}
                 passed = False
-            results.append({"func": func, "results": [sub]})
+            # The row's own score and result are what aggregate_verifiers reads; ``results`` is cua_evaluate's shape.
+            results.append({"func": func, "score": float(sub["score"]), "result": float(sub["score"]) >= PASS_SCORE,
+                            "results": [sub]})
             scores.append(float(sub["score"]))
             metrics.append({"func": func, "passed": passed, "score": float(sub["score"]), "message": sub["message"]})
         conj = self.evaluator.get("conj", "and")

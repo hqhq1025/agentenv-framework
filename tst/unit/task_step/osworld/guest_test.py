@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from agent_env.task_step.context import TaskStepContext
 from agent_env.task_step.task_steps.computer.osworld import guest
 from tst.unit.task_step.osworld.helpers import ENV_URL, TOKEN, card, computer
 
@@ -58,13 +59,15 @@ def test_the_controller_url_is_the_one_recorded():
         guest.controller_url(computer())
 
 
-def test_the_controllers_token_is_derived_from_the_envs_control_token_and_is_not_it():
-    token = guest.controller_token(computer())
-    assert token == guest.controller_token(computer()) and len(token) == 64
-    assert TOKEN not in token
-    other = computer()
-    other.control_token = "another-instance"
-    assert guest.controller_token(other) != token
-    other.control_token = None
-    with pytest.raises(RuntimeError, match="no control token"):
-        guest.controller_token(other)
+def test_a_controllers_token_is_random_and_owes_nothing_to_the_envs_control_token():
+    tokens = {guest.new_controller_token() for _ in range(3)}
+    assert len(tokens) == 3 and all(len(t) >= 32 and TOKEN not in t for t in tokens)
+
+
+def test_the_controllers_token_is_the_one_the_live_context_keeps_and_the_stored_one_never_has():
+    context = TaskStepContext()
+    context.metadata[guest.CONTROLLER_TOKENS_KEY] = {"desk": "kept"}
+    assert guest.controller_token(computer(), context) == "kept"
+    assert guest.CONTROLLER_TOKENS_KEY not in context.to_safe_dict()["metadata"]
+    with pytest.raises(RuntimeError, match="never stored; run osworld_deploy_controller"):
+        guest.controller_token(computer(), TaskStepContext())

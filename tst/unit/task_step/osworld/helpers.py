@@ -8,7 +8,7 @@ import httpx
 from agentenv_protocol.types import WELL_KNOWN_PATH
 
 from agent_env.env.env import DeployedEnv
-from agent_env.task_step.task_steps.computer.osworld import GUEST_EXTENSION, controller, guest
+from agent_env.task_step.task_steps.computer.osworld import GUEST_EXTENSION, controller
 
 ENV_URL = "https://computer.example"
 TOKEN = "s3cret-control-token"
@@ -67,5 +67,5 @@ def route_httpx(monkeypatch, module, controller: Controller) -> None:
 
 
 #: The token the controller beside ``computer()`` requires, and that controller as a step calls it.
-CONTROLLER_TOKEN = guest.controller_token(computer())
+CONTROLLER_TOKEN = "c0ntroller-t0ken"
 ENDPOINT = controller.Endpoint(CONTROLLER, controller.bearer_headers(CONTROLLER_TOKEN))
