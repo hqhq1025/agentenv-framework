@@ -238,6 +238,29 @@ async def test_deploy_twice_for_one_env_is_refused(deploy):
 
 
 @pytest.mark.asyncio
+async def test_deploy_on_a_resumed_run_replaces_the_controller_whose_token_wasnt_stored(deploy, monkeypatch):
+    first = TaskStepContext()
+    first.deployed_envs.append(computer())
+    await OSWorldDeployControllerTaskStep(id="a", version=1, env_id="desk").execute(first)
+    resumed = TaskStepContext.from_dict(first.to_safe_dict())
+    with pytest.raises(RuntimeError, match="never stored; run osworld_deploy_controller again"):
+        guest.controller_endpoint(resumed.deployed_envs[0], resumed)
+    terminated = AsyncMock()
+    monkeypatch.setattr(deploy_module, "terminate", terminated)
+    monkeypatch.setattr(deploy_module.guest, "new_controller_token", lambda: "fresh-t0ken")
+    deploy.provider.create_container.return_value = SimpleNamespace(
+        sandbox_id="sb-2", mode="container", type="docker", tunnel_urls={8000: CONTROLLER}, terminate=AsyncMock())
+
+    await OSWorldDeployControllerTaskStep(id="a", version=1, env_id="desk").execute(resumed)
+
+    terminated.assert_awaited_once_with(deploy_module.RecordedSandbox("sb-1", "docker", "sandbox"))
+    assert [s.sandbox_id for s in resumed.deployed_sandboxes] == ["sb-2"]
+    assert resumed.metadata[guest.CONTROLLERS_KEY]["desk"][guest.CONTROLLER_SANDBOX_ID_KEY] == "sb-2"
+    assert guest.controller_token(resumed.deployed_envs[0], resumed) == "fresh-t0ken"
+    assert deploy.provider.create_container.call_args.kwargs["env"]["CONTROLLER_AUTH_TOKEN"] == "fresh-t0ken"
+
+
+@pytest.mark.asyncio
 async def test_initialize_v2_resets_then_initializes_the_task(ctl):
     ctl.answers.update({"/reset": httpx.Response(200, text="ok"), "/initialize_task": {"success": True}})
     await OSWorldInitializeTaskStep(id="init", version=1, env_id="desk",

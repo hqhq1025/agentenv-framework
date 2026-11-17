@@ -98,7 +98,8 @@ def controller_token(deployed: Any, context: Any) -> str:
     tokens = (getattr(context, "metadata", None) or {}).get(CONTROLLER_TOKENS_KEY) or {}
     if not (token := tokens.get(deployed.env_id)):
         raise RuntimeError(f"env '{deployed.env_id}' has no OSWorld controller token in this run's context: it is "
-                           f"kept only in the live context, never stored; run osworld_deploy_controller in this run")
+                           f"kept only in the live context, never stored; run osworld_deploy_controller again, which replaces "
+                           f"the controller")
     return str(token)
 
 

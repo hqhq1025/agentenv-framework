@@ -28,6 +28,7 @@ from agent_env.task_step.task_steps.computer.osworld import controller, guest
 from agent_env.providers.sandbox_providers.chained_sandbox_provider import skip_refusing
 from agent_env.providers.sandbox_providers.sandbox import Sandbox
 from agent_env.providers.sandbox_providers.sandbox_provider import SandboxProvider, get_sandbox_provider
+from agent_env.task.teardown import RecordedSandbox, terminate
 from agent_env.task_step.context import DeployedSandbox, StepContextError, TaskStepContext
 from agent_env.task_step.task_step import TaskStep, TaskStepDependency
 
@@ -109,8 +110,10 @@ class OSWorldDeployControllerTaskStep(TaskStep):
         if deployed is None:
             raise StepContextError(f"Env '{self.env_id}' not found in context.deployed_envs")
         sandbox_name = f"{SANDBOX_NAME_PREFIX}{self.env_id}"
-        if any(s.sandbox_name == sandbox_name for s in context.deployed_sandboxes):
-            raise StepContextError(f"Sandbox '{sandbox_name}' is already deployed")
+        if previous := next((s for s in context.deployed_sandboxes if s.sandbox_name == sandbox_name), None):
+            if self.env_id in (context.metadata.get(guest.CONTROLLER_TOKENS_KEY) or {}):
+                raise StepContextError(f"Sandbox '{sandbox_name}' is already deployed")
+            await self._replace(previous, context)
         guest_url = await guest.resolve_guest_url(deployed)
         image = Artifact.get(self.controller_image_artifact_id or DEFAULT_CONTROLLER_IMAGE_ARTIFACT_ID)
         if not isinstance(image, DockerImageArtifact):
@@ -135,6 +138,19 @@ class OSWorldDeployControllerTaskStep(TaskStep):
         context.metadata.setdefault(guest.CONTROLLER_TOKENS_KEY, {})[self.env_id] = token
         logger.info(f"OSWorld controller for env '{self.env_id}' at {controller_url} (sandbox {sandbox.sandbox_id})")
         return context
+
+    async def _replace(self, previous: DeployedSandbox, context: TaskStepContext) -> None:
+        """Let go of the controller ``previous`` records, whose token this run no longer has: a run resumed from its
+        stored context, which never holds the token. A new controller is deployed in its place, with a new token."""
+        logger.info(f"The OSWorld controller for env '{self.env_id}' (sandbox {previous.sandbox_id}) has no token in "
+                    f"this run's context; replacing it")
+        try:
+            await terminate(RecordedSandbox(previous.sandbox_id, previous.sandbox_type, "sandbox"))
+        except Exception as e:
+            logger.warning(f"terminating the previous OSWorld controller {previous.sandbox_id} failed: "
+                           f"{type(e).__name__}: {str(e)[:300]}; its TTL ends it")
+        context.deployed_sandboxes.remove(previous)
+        (context.metadata.get(guest.CONTROLLERS_KEY) or {}).pop(self.env_id, None)
 
     async def _create(self, provider: SandboxProvider, deployed, guest_url: str, image: DockerImageArtifact, token: str,
                       context: TaskStepContext) -> Sandbox:

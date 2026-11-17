@@ -69,5 +69,5 @@ def test_the_controllers_token_is_the_one_the_live_context_keeps_and_the_stored_
     context.metadata[guest.CONTROLLER_TOKENS_KEY] = {"desk": "kept"}
     assert guest.controller_token(computer(), context) == "kept"
     assert guest.CONTROLLER_TOKENS_KEY not in context.to_safe_dict()["metadata"]
-    with pytest.raises(RuntimeError, match="never stored; run osworld_deploy_controller"):
+    with pytest.raises(RuntimeError, match="never stored; run osworld_deploy_controller again"):
         guest.controller_token(computer(), TaskStepContext())
